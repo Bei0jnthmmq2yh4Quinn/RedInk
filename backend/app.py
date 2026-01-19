@@ -1,8 +1,11 @@
 import logging
+import os
 import sys
 from pathlib import Path
+
 from flask import Flask, send_from_directory
 from flask_cors import CORS
+
 from backend.config import Config
 from backend.routes import register_routes
 
@@ -152,8 +155,25 @@ def _validate_config_on_startup(logger):
 
 if __name__ == '__main__':
     app = create_app()
+
+    # PaaS/容器平台通用：优先使用环境变量 PORT（如 Zeabur）
+    port = int(os.getenv("PORT", getattr(Config, "PORT", 12398)))
+
+    # 本地可用 DEBUG=1 开启调试；生产环境强制关闭
+    debug_env = os.getenv("DEBUG")
+    if debug_env is None:
+        debug = bool(getattr(Config, "DEBUG", False))
+    else:
+        debug = debug_env.strip().lower() in ("1", "true", "yes", "y", "on")
+
+    # 生产环境 / Zeabur 强制关闭 debug（避免 Debugger / reloader 导致容器被误判不稳定）
+    if os.getenv("FLASK_ENV", "").strip().lower() == "production" or os.getenv("ZEABUR"):
+        debug = False
+
+    # 关键：永远禁用 reloader，避免出现 “Restarting with stat”
     app.run(
-        host=Config.HOST,
-        port=Config.PORT,
-        debug=Config.DEBUG
+        host=getattr(Config, "HOST", "0.0.0.0"),
+        port=port,
+        debug=debug,
+        use_reloader=False
     )
